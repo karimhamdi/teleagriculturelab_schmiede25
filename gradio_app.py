@@ -1,9 +1,8 @@
 import gradio as gr
-import schedule
-import time
-from threading import Thread
 import requests  # Or the library for "nanobanana"
 import os
+from PIL import Image
+import io
 
 # --- Hypothetical settings for the nanobanana Gemini API ---
 # You would get these from the API's documentation
@@ -19,70 +18,73 @@ def get_daily_image():
     """
     global current_image
 
+    # If no API key is configured, use a placeholder image URL
+    if not API_KEY:
+        placeholder_url = "https://picsum.photos/1024/1024"
+        try:
+            resp = requests.get(placeholder_url, timeout=30)
+            resp.raise_for_status()
+            img = Image.open(io.BytesIO(resp.content)).convert("RGB")
+            current_image = img
+            return img
+        except requests.exceptions.RequestException as e:
+            print(f"Error fetching placeholder image: {e}")
+            # Minimal fallback: gray image
+            img = Image.new("RGB", (1024, 1024), color=(200, 200, 200))
+            current_image = img
+            return img
+
     # --- This is the part you would adapt for the actual API ---
     headers = {
         "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json"
+        "Content-Type": "application/json",
     }
-    # The prompt for the image generation
     payload = {
         "prompt": "A beautiful, artistic image for my daily display",
-        "size": "1024x1024"
+        "size": "1024x1024",
     }
 
     try:
-        # Make the request to the API
-        response = requests.post(API_ENDPOINT, json=payload, headers=headers)
-        response.raise_for_status()  # Raise an exception for bad status codes
-
-        # Assuming the API returns the image URL in the response
+        response = requests.post(API_ENDPOINT, json=payload, headers=headers, timeout=30)
+        response.raise_for_status()
         image_url = response.json().get("imageUrl")
-        # Or if it returns the image data directly, you'd save it to a file
-        # with open("daily_image.png", "wb") as f:
-        #     f.write(response.content)
-        # image_url = "daily_image.png"
-
-        current_image = image_url
-        print(f"Updated image to: {current_image}")
-
+        if not image_url:
+            # Fallback if API didn't return what we expected
+            image_url = "https://picsum.photos/1024/1024?blur=1"
+        # Fetch the image content and return a PIL image
+        img_resp = requests.get(image_url, timeout=30)
+        img_resp.raise_for_status()
+        img = Image.open(io.BytesIO(img_resp.content)).convert("RGB")
+        current_image = img
+        print(f"Updated image from: {image_url}")
+        return img
     except requests.exceptions.RequestException as e:
         print(f"Error calling the image API: {e}")
-        # Use a fallback image in case of an error
-        current_image = "https://picsum.photos/800/600?grayscale"
-
-    return current_image
-
-# (The rest of the Gradio and scheduling code remains the same as the previous example)
-
-def schedule_checker():
-    """Runs pending scheduled tasks."""
-    while True:
-        schedule.run_pending()
-        time.sleep(1)
+        # Fallback to a basic grayscale image
+        img = Image.new("RGB", (1024, 1024), color=(128, 128, 128))
+        current_image = img
+        return img
 
 def create_app():
     """Creates and returns the Gradio app."""
     with gr.Blocks(title="Daily Image") as app:
         gr.Markdown("# Your Daily Image")
-        image_output = gr.Image(value=get_daily_image, label="Today's Image")
-        
-        # Add a refresh button for manual updates
-        refresh_btn = gr.Button("Refresh Image")
-        refresh_btn.click(get_daily_image, outputs=image_output)
-        
-        # The scheduled updates will be handled by the background thread
-        app.load(get_daily_image, outputs=image_output)
+        image_output = gr.Image(value=None, label="Today's Image")
+
+        # Run once at load to populate the image
+        app.load(get_daily_image, None, image_output)
+
+        # Add a manual refresh button
+        refresh_btn = gr.Button("Refresh now")
+        refresh_btn.click(get_daily_image, None, image_output)
+
+        # Use a Gradio Timer to update the image periodically (24 hours)
+        # Note: This triggers relative to when the app starts
+        timer = gr.Timer(86400, active=True)
+        timer.tick(get_daily_image, None, image_output)
     return app
 
 if __name__ == "__main__":
-    # Schedule the job to run once every day
-    schedule.every().day.at("08:00").do(get_daily_image)
-
-    # Put the scheduler checking in a background thread
-    scheduler_thread = Thread(target=schedule_checker)
-    scheduler_thread.daemon = True
-    scheduler_thread.start()
-
     # Create and launch the Gradio app
     app = create_app()
     app.launch()
