@@ -65,9 +65,13 @@ def create_app():
     with gr.Blocks(title="Daily Image") as app:
         gr.Markdown("# Your Daily Image")
         image_output = gr.Image(value=get_daily_image, label="Today's Image")
-
-        # This will reload the image every 24 hours (86400 seconds)
-        app.load(get_daily_image, None, image_output, every=86400)
+        
+        # Add a refresh button for manual updates
+        refresh_btn = gr.Button("Refresh Image")
+        refresh_btn.click(get_daily_image, outputs=image_output)
+        
+        # The scheduled updates will be handled by the background thread
+        app.load(get_daily_image, outputs=image_output)
     return app
 
 if __name__ == "__main__":
