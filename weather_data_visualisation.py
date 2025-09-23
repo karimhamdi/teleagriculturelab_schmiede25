@@ -7,22 +7,48 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from PIL import Image
+from typing import Optional
 from utils import get_kit_measurements_df
 
 
-def weather_data_visualisation(kit = 1001, save_to_disk: bool = False) -> Image.Image:
-    weatherdata_df = get_kit_measurements_df(kit)
-    weatherdata_df.drop(columns=['kit_id', "unit","_raw"], inplace=True)
-    weatherdata_df.dropna(inplace=True)
-    weatherdata_df.index = pd.to_datetime(weatherdata_df.index)
-    weatherdata_df = weatherdata_df.pivot(index="timestamp",columns='sensor', values='value')
+def weather_data_visualisation(
+    kit: int = 1001,
+    save_to_disk: bool = False,
+    df: Optional[pd.DataFrame] = None,
+) -> Image.Image:
+    """Generates a 'Monsoon Mandala' visualization from weather data.
+
+    Args:
+        kit: The kit ID to fetch data for, if df is not provided.
+        save_to_disk: Whether to save the output image to disk.
+        df: An optional DataFrame with pre-loaded weather data. If None, data will be fetched.
+
+    Returns:
+        A PIL.Image object of the generated visualization.
+    """
+    # If no DataFrame is provided, fetch the data using the kit ID
+    if df is None:
+        df = get_kit_measurements_df(kit)
+
+    # If data is still unavailable, return a placeholder or raise an error
+    if df is None or df.empty:
+        raise ValueError(f"No data available for kit {kit}")
+
+    # --- Data cleaning and pivoting ---
+    # Drop columns that are not needed for the visualization
+    df.drop(columns=['kit_id', "unit", "_raw"], inplace=True, errors='ignore')
+    df.dropna(inplace=True)
+    
+    # Ensure the index is a datetime object before pivoting
+    if not isinstance(df.index, pd.DatetimeIndex):
+        df['timestamp'] = pd.to_datetime(df['timestamp'])
+        df.set_index('timestamp', inplace=True)
+        
+    df = df.pivot(columns='sensor', values='value')
 
     # ---- Mapping to polar "Monsoon Mandala" ----
     # Angles map to time; radii encode a blended metric; thickness & dot size encode other variables.
-
-    df = weatherdata_df
-
-    theta = np.linspace(0, 2*np.pi, len(df), endpoint=False)
+    theta = np.linspace(0, 2 * np.pi, len(df), endpoint=False)
 
     # Normalize helpers (avoid specifying colors, per instructions).
     def norm(x):
@@ -97,5 +123,10 @@ def weather_data_visualisation(kit = 1001, save_to_disk: bool = False) -> Image.
     plt.close(fig)
     return pil_img
 
+
 if __name__ == "__main__":
-    weather_data_visualisation()
+    # Example: Generate visualization for a specific kit and save it
+    img = weather_data_visualisation(kit=1001, save_to_disk=True)
+    if img:
+        print("Visualization generated and saved to 'output/'.")
+        img.show()  # Display the image
