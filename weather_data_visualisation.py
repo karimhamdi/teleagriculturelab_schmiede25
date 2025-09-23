@@ -7,14 +7,15 @@ import pandas as pd
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from PIL import Image
+from utils import get_kit_measurements_df
 
 
-def weather_data_visualisation(save_to_disk: bool = False) -> Image.Image:
-    weatherdata_df = pd.read_csv("data/kit_1001_2025-09-22.csv", index_col=2)
+def weather_data_visualisation(kit = 1001, save_to_disk: bool = False) -> Image.Image:
+    weatherdata_df = get_kit_measurements_df(kit)
     weatherdata_df.drop(columns=['kit_id', "unit","_raw"], inplace=True)
     weatherdata_df.dropna(inplace=True)
     weatherdata_df.index = pd.to_datetime(weatherdata_df.index)
-    weatherdata_df = weatherdata_df.pivot(columns='sensor', values='value')
+    weatherdata_df = weatherdata_df.pivot(index="timestamp",columns='sensor', values='value')
 
     # ---- Mapping to polar "Monsoon Mandala" ----
     # Angles map to time; radii encode a blended metric; thickness & dot size encode other variables.
