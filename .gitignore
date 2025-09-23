@@ -3,11 +3,6 @@ __pycache__/
 *.py[codz]
 *$py.class
 
-# project specific
-*.png
-*.svg
-
-
 # C extensions
 *.so
 
