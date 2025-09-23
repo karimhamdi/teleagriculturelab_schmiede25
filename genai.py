@@ -2,6 +2,7 @@ from dotenv import load_dotenv
 from PIL import Image
 from typing import Optional
 from io import BytesIO
+import time
 
 load_dotenv()  # take environment variables from .env.
 
@@ -49,27 +50,51 @@ def generate_genai_image(
     # Prepare prompt
     ptxt = prompt or DEFAULT_PROMPT
 
-    try:
-        response = client.models.generate_content(
-            model=model,
-            contents=[ptxt, img],
-        )
-    except Exception as e:
-        # No credentials or API issue
-        print(f"GenAI request failed: {e}")
-        return None
-
     output_image = None
-    try:
-        for part in response.candidates[0].content.parts:
-            if getattr(part, "text", None) is not None:
-                # Optional: print any textual response
-                print(part.text)
-            elif getattr(part, "inline_data", None) is not None:
-                output_image = Image.open(BytesIO(part.inline_data.data)).convert("RGB")
-    except Exception as e:
-        print(f"Failed to parse GenAI response: {e}")
-        return None
+    last_error = None
+
+    # Retry up to 5 times, waiting 2 seconds between failed attempts
+    for attempt in range(1, 6):
+        try:
+            response = client.models.generate_content(
+                model=model,
+                contents=[ptxt, img],
+            )
+        except Exception as e:
+            last_error = e
+            # If not last attempt, wait and retry
+            if attempt < 5:
+                time.sleep(2)
+                continue
+            else:
+                print(f"GenAI request failed (attempt {attempt}/5): {e}")
+                break
+
+        try:
+            # Reset on each attempt
+            output_image = None
+            for part in response.candidates[0].content.parts:
+                if getattr(part, "text", None) is not None:
+                    # Optional: print any textual response
+                    print(part.text)
+                elif getattr(part, "inline_data", None) is not None:
+                    output_image = Image.open(BytesIO(part.inline_data.data)).convert("RGB")
+            # Success condition
+            if output_image is not None:
+                break
+        except Exception as e:
+            last_error = e
+            # Parsing failed; if not last attempt, wait and retry
+            if attempt < 5:
+                time.sleep(2)
+                continue
+            else:
+                print(f"Failed to parse GenAI response (attempt {attempt}/5): {e}")
+                break
+
+        # If we reached here with no image, wait then try again (unless last attempt)
+        if output_image is None and attempt < 5:
+            time.sleep(2)
 
     # Optional save without using as a future fallback
     if output_image is not None and save_to_disk:
@@ -80,6 +105,10 @@ def generate_genai_image(
             output_image.save("output/generated_image.png")
         except Exception:
             pass
+
+    if output_image is None and last_error is not None:
+        # Keep return type unchanged; logging already printed above
+        pass
 
     return output_image
 

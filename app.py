@@ -1,4 +1,4 @@
-from typing import Tuple
+from typing import Tuple, Optional
 from PIL import Image, ImageDraw, ImageFont
 
 
@@ -18,17 +18,24 @@ def _placeholder_image(size: Tuple[int, int], text: str, bg=(230, 230, 230)) -> 
     return img
 
 
-def load_weather_plot(size: Tuple[int, int] = (1024, 1024)) -> Image.Image:
-    """Load the weather plot image produced by weather_data_visualisation.py.
+def load_weather_plot(size: Tuple[int, int] = (1024, 1024), kit_id: Optional[int] = None) -> Image.Image:
+    """Load the weather plot image for a given kit.
 
-    Attempts to import the script to generate the file on first run. Falls back
-    to a placeholder if unavailable.
+    Tries to generate in-memory via weather_data_visualisation(); falls back to
+    a placeholder if unavailable.
     """
     try:
         # Prefer calling the function to get a PIL image directly
         from weather_data_visualisation import weather_data_visualisation
+        # Coerce kit_id to int, defaulting to 1001 if not provided/invalid
+        kit = 1001
+        if kit_id is not None:
+            try:
+                kit = int(kit_id)
+            except Exception:
+                kit = 1001
 
-        img = weather_data_visualisation(save_to_disk=False)
+        img = weather_data_visualisation(kit=kit, save_to_disk=False)
         if isinstance(img, Image.Image):
             if img.size != size:
                 img = img.resize(size, Image.LANCZOS)
@@ -39,11 +46,10 @@ def load_weather_plot(size: Tuple[int, int] = (1024, 1024)) -> Image.Image:
     return _placeholder_image(size, "Weather plot unavailable")
 
 
-def load_genai_output(size: Tuple[int, int] = (1024, 1024)) -> Image.Image:
-    """Load the GenAI output image if available; otherwise return a placeholder.
+def load_genai_output(size: Tuple[int, int] = (1024, 1024), kit_id: Optional[int] = None) -> Image.Image:
+    """Load the GenAI output image for a given kit if available; otherwise a placeholder.
 
-    If `genai.py` later exposes a function like `generate_genai_image(size)`,
-    it will be used here automatically.
+    Uses the selected kit's weather plot as the guiding input for the GenAI image.
     """
     try:
         from genai import generate_genai_image
@@ -51,7 +57,7 @@ def load_genai_output(size: Tuple[int, int] = (1024, 1024)) -> Image.Image:
         # Provide the latest weather image if possible to guide the GenAI
         base_img = None
         try:
-            base_img = load_weather_plot(size)
+            base_img = load_weather_plot(size, kit_id=kit_id)
         except Exception:
             base_img = None
 
@@ -66,9 +72,9 @@ def load_genai_output(size: Tuple[int, int] = (1024, 1024)) -> Image.Image:
     return _placeholder_image(size, "GenAI image pending")
 
 
-def get_both_images(size: Tuple[int, int] = (1024, 1024)) -> Tuple[Image.Image, Image.Image]:
-    left = load_weather_plot(size)
-    right = load_genai_output(size)
+def get_both_images(kit_id: Optional[int] = None, size: Tuple[int, int] = (1024, 1024)) -> Tuple[Image.Image, Image.Image]:
+    left = load_weather_plot(size, kit_id=kit_id)
+    right = load_genai_output(size, kit_id=kit_id)
     return left, right
 
 
@@ -79,15 +85,17 @@ def create_app():
     with gr.Blocks(title="Weather × GenAI") as app:
         gr.Markdown("# Weather visualization and GenAI output")
         with gr.Row():
+            kit_input = gr.Number(label="Kit ID", value=1001, precision=0)
+        with gr.Row():
             left_img = gr.Image(label="Weather plot", type="pil")
             right_img = gr.Image(label="GenAI output", type="pil")
 
         # Load both images on app start
-        app.load(fn=get_both_images, inputs=None, outputs=[left_img, right_img])
+        app.load(fn=get_both_images, inputs=[kit_input], outputs=[left_img, right_img])
 
         # Manual refresh button
         refresh_btn = gr.Button("Refresh")
-        refresh_btn.click(fn=get_both_images, inputs=None, outputs=[left_img, right_img])
+        refresh_btn.click(fn=get_both_images, inputs=[kit_input], outputs=[left_img, right_img])
 
     return app
 
