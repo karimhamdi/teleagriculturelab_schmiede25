@@ -5,21 +5,17 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 
-# ---- Synthetic placeholder data (swap with your DataFrame) ----
-np.random.seed(42)
-n = 720  # e.g., 720 time steps (half-hour over 15 days)—adjust to your dataset length
-time = pd.date_range("2025-01-01", periods=n, freq="H")
-df = pd.DataFrame({
-    "time": time,
-    "temperature": 12 + 10*np.sin(np.linspace(0, 6*np.pi, n)) + np.random.normal(0, 0.8, n),
-    "humidity": 65 + 20*np.cos(np.linspace(0, 4*np.pi, n)) + np.random.normal(0, 1.5, n),
-    "rainfall_mm": np.clip(np.random.exponential(0.3, n) * (np.sin(np.linspace(0, 8*np.pi, n))**2), 0, None),
-    "wind_mps": np.abs(np.random.normal(2.5, 1.0, n)),
-    "illum_lux": np.clip(800*np.sin(np.linspace(0, 12*np.pi, n)) + 50*np.random.randn(n), 0, None)
-}).set_index("time")
+weatherdata_df = pd.read_csv("data/kit_1001_2025-09-22.csv", index_col=2)
+weatherdata_df.drop(columns=['kit_id', "unit","_raw"], inplace=True)
+weatherdata_df.dropna(inplace=True)
+weatherdata_df.index = pd.to_datetime(weatherdata_df.index)
+weatherdata_df = weatherdata_df.pivot(columns='sensor', values='value')
 
 # ---- Mapping to polar "Monsoon Mandala" ----
 # Angles map to time; radii encode a blended metric; thickness & dot size encode other variables.
+
+df = weatherdata_df
+
 theta = np.linspace(0, 2*np.pi, len(df), endpoint=False)
 
 # Normalize helpers (avoid specifying colors, per instructions).
@@ -29,11 +25,11 @@ def norm(x):
         return np.zeros_like(x)
     return (x - np.nanmin(x)) / (np.nanmax(x) - np.nanmin(x))
 
-T = norm(df["temperature"].values)
-H = norm(df["humidity"].values)
-R = norm(df["rainfall_mm"].values)
-W = norm(df["wind_mps"].values)
-L = norm(df["illum_lux"].values)
+T = norm(df['ftTemp'].values)
+H = norm(df['gbHum'].values)
+R = norm(df['NH3'].values)
+W = norm(df['C3H8'].values)
+L = norm(df['CO'].values)
 
 # Radius combines temp (outer breathing), humidity (inner swell), light (diurnal bloom)
 radius = 0.45 + 0.35*(0.5*T + 0.3*H + 0.2*L)
@@ -73,9 +69,8 @@ for th, rr, sw in zip(theta[::12], radius_smooth[::12], stroke[::12]):
     ax.plot([th, th], [rr*0.75, rr*0.98], linewidth=sw*0.12, alpha=0.8)
 
 plt.tight_layout()
-
-png_path = "/mnt/data/monsoon_mandala_example.png"
-svg_path = "/mnt/data/monsoon_mandala_example.svg"
+png_path = "output/monsoon_mandala_example.png"
+svg_path = "output/monsoon_mandala_example.svg"
 plt.savefig(png_path, dpi=300, bbox_inches="tight", pad_inches=0.05)
 plt.savefig(svg_path, bbox_inches="tight", pad_inches=0.05)
 png_path, svg_path
