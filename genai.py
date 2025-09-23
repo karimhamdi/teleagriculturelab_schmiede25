@@ -9,7 +9,8 @@ from io import BytesIO
 
 client = genai.Client()
 
-prompt = ("Using the provided data visualization, please add photorealistic Chinese tea snacks to the scene. Ensure the change is supports the visualization.")
+#prompt = ("Using the provided data visualization, please add photorealistic Chinese tea snacks to the scene. Ensure the change is supports the visualization.")
+prompt = ("Turn the provided data visualization into a painting using an eastern art style.")
 
 def generate_genai_image():
     
