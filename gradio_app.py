@@ -4,19 +4,24 @@ from typing import Tuple
 from PIL import Image, ImageDraw, ImageFont
 
 
-WEATHER_PNG_PATH = "/mnt/data/monsoon_mandala_example.png"
-
+WEATHER_PNG_PATH = "output/monsoon_mandala_example.png"
+GENERATED_PNG_PATH = "output/generated_image.png"
 
 def _placeholder_image(size: Tuple[int, int], text: str, bg=(230, 230, 230)) -> Image.Image:
-    img = Image.new("RGB", size, color=bg)
-    draw = ImageDraw.Draw(img)
-    # Try to center text; fallback to default font only
-    try:
-        font = ImageFont.load_default()
-    except Exception:
-        font = None
-    w, h = draw.textbbox((0, 0), text, font=font)[2:]
-    draw.text(((size[0] - w) / 2, (size[1] - h) / 2), text, fill=(80, 80, 80), font=font)
+    if GENERATED_PNG_PATH:
+        img = Image.open(GENERATED_PNG_PATH).convert("RGB")
+        if img.size != size:
+            img = img.resize(size, Image.LANCZOS)
+    else:
+        img = Image.new("RGB", size, color=bg)
+        draw = ImageDraw.Draw(img)
+        # Try to center text; fallback to default font only
+        try:
+            font = ImageFont.load_default()
+        except Exception:
+            font = None
+        w, h = draw.textbbox((0, 0), text, font=font)[2:]
+        draw.text(((size[0] - w) / 2, (size[1] - h) / 2), text, fill=(80, 80, 80), font=font)
     return img
 
 
