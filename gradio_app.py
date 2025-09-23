@@ -1,90 +1,116 @@
-import gradio as gr
-import requests  # Or the library for "nanobanana"
 import os
-from PIL import Image
 import io
+from typing import Tuple
+from PIL import Image, ImageDraw, ImageFont
 
-# --- Hypothetical settings for the nanobanana Gemini API ---
-# You would get these from the API's documentation
-API_KEY = os.environ.get("GEMINI_API_KEY") # It's best to use environment variables for keys
-API_ENDPOINT = "https://api.gemini-nanobanana.com/v1/images/generate"
 
-# Global variable to store the image path
-current_image = None
+WEATHER_PNG_PATH = "/mnt/data/monsoon_mandala_example.png"
 
-def get_daily_image():
+
+def _placeholder_image(size: Tuple[int, int], text: str, bg=(230, 230, 230)) -> Image.Image:
+    img = Image.new("RGB", size, color=bg)
+    draw = ImageDraw.Draw(img)
+    # Try to center text; fallback to default font only
+    try:
+        font = ImageFont.load_default()
+    except Exception:
+        font = None
+    w, h = draw.textbbox((0, 0), text, font=font)[2:]
+    draw.text(((size[0] - w) / 2, (size[1] - h) / 2), text, fill=(80, 80, 80), font=font)
+    return img
+
+
+def load_weather_plot(size: Tuple[int, int] = (1024, 1024)) -> Image.Image:
+    """Load the weather plot image produced by weather_data_visualisation.py.
+
+    Attempts to import the script to generate the file on first run. Falls back
+    to a placeholder if unavailable.
     """
-    This function generates a new image using the hypothetical Gemini/nanobanana API.
-    """
-    global current_image
-
-    # If no API key is configured, use a placeholder image URL
-    if not API_KEY:
-        placeholder_url = "https://picsum.photos/1024/1024"
-        try:
-            resp = requests.get(placeholder_url, timeout=30)
-            resp.raise_for_status()
-            img = Image.open(io.BytesIO(resp.content)).convert("RGB")
-            current_image = img
-            return img
-        except requests.exceptions.RequestException as e:
-            print(f"Error fetching placeholder image: {e}")
-            # Minimal fallback: gray image
-            img = Image.new("RGB", (1024, 1024), color=(200, 200, 200))
-            current_image = img
-            return img
-
-    # --- This is the part you would adapt for the actual API ---
-    headers = {
-        "Authorization": f"Bearer {API_KEY}",
-        "Content-Type": "application/json",
-    }
-    payload = {
-        "prompt": "A beautiful, artistic image for my daily display",
-        "size": "1024x1024",
-    }
+    try:
+        # Importing the module will execute it and save the PNG to /mnt/data
+        import importlib
+        import weather_data_visualisation  # noqa: F401
+        # Optionally reload to force regeneration in the same process, if needed:
+        # importlib.reload(weather_data_visualisation)
+    except Exception as e:
+        print(f"Weather plot generation/import failed: {e}")
 
     try:
-        response = requests.post(API_ENDPOINT, json=payload, headers=headers, timeout=30)
-        response.raise_for_status()
-        image_url = response.json().get("imageUrl")
-        if not image_url:
-            # Fallback if API didn't return what we expected
-            image_url = "https://picsum.photos/1024/1024?blur=1"
-        # Fetch the image content and return a PIL image
-        img_resp = requests.get(image_url, timeout=30)
-        img_resp.raise_for_status()
-        img = Image.open(io.BytesIO(img_resp.content)).convert("RGB")
-        current_image = img
-        print(f"Updated image from: {image_url}")
-        return img
-    except requests.exceptions.RequestException as e:
-        print(f"Error calling the image API: {e}")
-        # Fallback to a basic grayscale image
-        img = Image.new("RGB", (1024, 1024), color=(128, 128, 128))
-        current_image = img
-        return img
+        if os.path.exists(WEATHER_PNG_PATH):
+            img = Image.open(WEATHER_PNG_PATH).convert("RGB")
+            if img.size != size:
+                img = img.resize(size, Image.LANCZOS)
+            return img
+    except Exception as e:
+        print(f"Failed to load weather plot from {WEATHER_PNG_PATH}: {e}")
+
+    return _placeholder_image(size, "Weather plot unavailable")
+
+
+def load_genai_output(size: Tuple[int, int] = (1024, 1024)) -> Image.Image:
+    """Load the GenAI output image if available; otherwise return a placeholder.
+
+    If `genai.py` later exposes a function like `generate_genai_image(size)`,
+    it will be used here automatically.
+    """
+    try:
+        import genai
+
+        # Try common function names users might implement later
+        for fn_name in ("generate_genai_image", "generate_image", "main"):
+            fn = getattr(genai, fn_name, None)
+            if callable(fn):
+                try:
+                    img = fn(size=size)
+                    if isinstance(img, Image.Image):
+                        if img.size != size:
+                            img = img.resize(size, Image.LANCZOS)
+                        return img
+                except TypeError:
+                    # Maybe function doesn't accept kwargs
+                    try:
+                        img = fn(size)
+                        if isinstance(img, Image.Image):
+                            if img.size != size:
+                                img = img.resize(size, Image.LANCZOS)
+                            return img
+                    except Exception as e:
+                        print(f"Calling genai.{fn_name} failed: {e}")
+                except Exception as e:
+                    print(f"genai function '{fn_name}' raised: {e}")
+                break
+    except Exception as e:
+        print(f"genai.py not usable yet: {e}")
+
+    return _placeholder_image(size, "GenAI image pending")
+
+
+def get_both_images(size: Tuple[int, int] = (1024, 1024)) -> Tuple[Image.Image, Image.Image]:
+    left = load_weather_plot(size)
+    right = load_genai_output(size)
+    return left, right
+
 
 def create_app():
-    """Creates and returns the Gradio app."""
-    with gr.Blocks(title="Daily Image") as app:
-        gr.Markdown("# Your Daily Image")
-        image_output = gr.Image(value=None, label="Today's Image")
+    """Creates and returns the Gradio app with two side-by-side images."""
+    import gradio as gr
 
-        # Run once at load to populate the image
-        app.load(get_daily_image, None, image_output)
+    with gr.Blocks(title="Weather × GenAI") as app:
+        gr.Markdown("# Weather visualization and GenAI output")
+        with gr.Row():
+            left_img = gr.Image(label="Weather plot", type="pil")
+            right_img = gr.Image(label="GenAI output", type="pil")
 
-        # Add a manual refresh button
-        refresh_btn = gr.Button("Refresh now")
-        refresh_btn.click(get_daily_image, None, image_output)
+        # Load both images on app start
+        app.load(fn=get_both_images, inputs=None, outputs=[left_img, right_img])
 
-        # Use a Gradio Timer to update the image periodically (24 hours)
-        # Note: This triggers relative to when the app starts
-        timer = gr.Timer(86400, active=True)
-        timer.tick(get_daily_image, None, image_output)
+        # Manual refresh button
+        refresh_btn = gr.Button("Refresh")
+        refresh_btn.click(fn=get_both_images, inputs=None, outputs=[left_img, right_img])
+
     return app
 
+
 if __name__ == "__main__":
-    # Create and launch the Gradio app
     app = create_app()
     app.launch()
