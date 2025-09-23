@@ -110,7 +110,7 @@ def create_app():
         def _prepare_data(kit_id):
             # Fetch data for the given kit to ensure availability before enabling generation
             try:
-                from utils import get_kit_measurements_df
+                from api_call import get_kit_measurements_df
 
                 kit = 1001
                 if kit_id is not None:
@@ -119,7 +119,7 @@ def create_app():
                     except Exception:
                         kit = 1001
 
-                df = get_kit_measurements_df(kit)
+                df = get_kit_measurements_df(kit, page_size=60, max_pages=2)
                 if df is None or getattr(df, "empty", True):
                     return (
                         f"No data found for kit {kit}. Please try another kit.",

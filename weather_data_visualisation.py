@@ -8,7 +8,7 @@ import matplotlib.pyplot as plt
 from matplotlib.backends.backend_agg import FigureCanvasAgg as FigureCanvas
 from PIL import Image
 from typing import Optional
-from utils import get_kit_measurements_df
+from api_call import get_kit_measurements_df
 
 
 def weather_data_visualisation(
@@ -35,8 +35,8 @@ def weather_data_visualisation(
         raise ValueError(f"No data available for kit {kit}")
 
     # --- Data cleaning and pivoting ---
-    # Drop columns that are not needed for the visualization
-    df.drop(columns=['kit_id', "unit", "_raw"], inplace=True, errors='ignore')
+    # Drop columns that are not needed for the visualization (new API df has no _raw)
+    df.drop(columns=['kit_id', "unit"], inplace=True, errors='ignore')
     df.dropna(inplace=True)
     
     # Ensure the index is a datetime object before pivoting
@@ -45,6 +45,11 @@ def weather_data_visualisation(
         df.set_index('timestamp', inplace=True)
         
     df = df.pivot(columns='sensor', values='value')
+
+    # Ensure required columns exist (fill with zeros if missing)
+    for col in ['ftTemp', 'gbHum', 'NH3', 'C3H8', 'CO']:
+        if col not in df.columns:
+            df[col] = 0.0
 
     # ---- Mapping to polar "Monsoon Mandala" ----
     # Angles map to time; radii encode a blended metric; thickness & dot size encode other variables.

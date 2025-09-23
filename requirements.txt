@@ -5,3 +5,4 @@ pillow
 gradio
 python-dotenv
 google-genai
+tqdm
