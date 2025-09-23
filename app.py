@@ -89,13 +89,54 @@ def create_app():
         with gr.Row():
             left_img = gr.Image(label="Weather plot", type="pil")
             right_img = gr.Image(label="GenAI output", type="pil")
+        status_md = gr.Markdown(visible=True)
 
-        # Load both images on app start
-        app.load(fn=get_both_images, inputs=[kit_input], outputs=[left_img, right_img])
+        # Helper functions inside the app context to use gr.update
+        def _disable_refresh():
+            # Immediately disable the refresh button before a long-running task
+            return gr.update(interactive=False)
+
+        def _prepare_data(kit_id):
+            # Fetch data for the given kit to ensure availability before enabling generation
+            try:
+                from utils import get_kit_measurements_df
+
+                kit = 1001
+                if kit_id is not None:
+                    try:
+                        kit = int(kit_id)
+                    except Exception:
+                        kit = 1001
+
+                df = get_kit_measurements_df(kit)
+                if df is None or getattr(df, "empty", True):
+                    return (
+                        f"No data found for kit {kit}. Please try another kit.",
+                        gr.update(interactive=False),
+                    )
+                return (
+                    f"Data loaded for kit {kit}: {len(df)} rows.",
+                    gr.update(interactive=True),
+                )
+            except Exception as e:
+                return (f"Failed to load data: {e}", gr.update(interactive=False))
 
         # Manual refresh button
         refresh_btn = gr.Button("Refresh")
         refresh_btn.click(fn=get_both_images, inputs=[kit_input], outputs=[left_img, right_img])
+
+        # On app load: disable -> prepare data -> then render initial images
+        (
+            app.load(fn=_disable_refresh, inputs=None, outputs=refresh_btn)
+            .then(fn=_prepare_data, inputs=[kit_input], outputs=[status_md, refresh_btn])
+            .then(fn=get_both_images, inputs=[kit_input], outputs=[left_img, right_img])
+        )
+
+        # When kit changes: disable button immediately, then prepare data; user can then click Refresh
+        (
+            kit_input.change(fn=_disable_refresh, inputs=None, outputs=refresh_btn)
+            .then(fn=_prepare_data, inputs=[kit_input], outputs=[status_md, refresh_btn])
+        )
 
     return app
 
