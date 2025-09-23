@@ -1,27 +1,20 @@
-import os
-import io
 from typing import Tuple
 from PIL import Image, ImageDraw, ImageFont
 
 
-WEATHER_PNG_PATH = "output/monsoon_mandala_example.png"
-GENERATED_PNG_PATH = "output/generated_image.png"
+WEATHER_PNG_PATH = None  # disk fallback removed
+GENERATED_PNG_PATH = None  # disk fallback removed
 
 def _placeholder_image(size: Tuple[int, int], text: str, bg=(230, 230, 230)) -> Image.Image:
-    if GENERATED_PNG_PATH:
-        img = Image.open(GENERATED_PNG_PATH).convert("RGB")
-        if img.size != size:
-            img = img.resize(size, Image.LANCZOS)
-    else:
-        img = Image.new("RGB", size, color=bg)
-        draw = ImageDraw.Draw(img)
-        # Try to center text; fallback to default font only
-        try:
-            font = ImageFont.load_default()
-        except Exception:
-            font = None
-        w, h = draw.textbbox((0, 0), text, font=font)[2:]
-        draw.text(((size[0] - w) / 2, (size[1] - h) / 2), text, fill=(80, 80, 80), font=font)
+    # Always create a simple placeholder; don't try to read a file here
+    img = Image.new("RGB", size, color=bg)
+    draw = ImageDraw.Draw(img)
+    try:
+        font = ImageFont.load_default()
+    except Exception:
+        font = None
+    w, h = draw.textbbox((0, 0), text, font=font)[2:]
+    draw.text(((size[0] - w) / 2, (size[1] - h) / 2), text, fill=(80, 80, 80), font=font)
     return img
 
 
@@ -32,22 +25,16 @@ def load_weather_plot(size: Tuple[int, int] = (1024, 1024)) -> Image.Image:
     to a placeholder if unavailable.
     """
     try:
-        # Importing the module will execute it and save the PNG to /mnt/data
-        import importlib
-        import weather_data_visualisation  # noqa: F401
-        # Optionally reload to force regeneration in the same process, if needed:
-        # importlib.reload(weather_data_visualisation)
-    except Exception as e:
-        print(f"Weather plot generation/import failed: {e}")
+        # Prefer calling the function to get a PIL image directly
+        from weather_data_visualisation import weather_data_visualisation
 
-    try:
-        if os.path.exists(WEATHER_PNG_PATH):
-            img = Image.open(WEATHER_PNG_PATH).convert("RGB")
+        img = weather_data_visualisation(save_to_disk=False)
+        if isinstance(img, Image.Image):
             if img.size != size:
                 img = img.resize(size, Image.LANCZOS)
             return img
     except Exception as e:
-        print(f"Failed to load weather plot from {WEATHER_PNG_PATH}: {e}")
+        print(f"Weather plot generation failed: {e}")
 
     return _placeholder_image(size, "Weather plot unavailable")
 
@@ -59,31 +46,20 @@ def load_genai_output(size: Tuple[int, int] = (1024, 1024)) -> Image.Image:
     it will be used here automatically.
     """
     try:
-        import genai
+        from genai import generate_genai_image
 
-        # Try common function names users might implement later
-        for fn_name in ("generate_genai_image", "generate_image", "main"):
-            fn = getattr(genai, fn_name, None)
-            if callable(fn):
-                try:
-                    img = fn(size=size)
-                    if isinstance(img, Image.Image):
-                        if img.size != size:
-                            img = img.resize(size, Image.LANCZOS)
-                        return img
-                except TypeError:
-                    # Maybe function doesn't accept kwargs
-                    try:
-                        img = fn(size)
-                        if isinstance(img, Image.Image):
-                            if img.size != size:
-                                img = img.resize(size, Image.LANCZOS)
-                            return img
-                    except Exception as e:
-                        print(f"Calling genai.{fn_name} failed: {e}")
-                except Exception as e:
-                    print(f"genai function '{fn_name}' raised: {e}")
-                break
+        # Provide the latest weather image if possible to guide the GenAI
+        base_img = None
+        try:
+            base_img = load_weather_plot(size)
+        except Exception:
+            base_img = None
+
+        img = generate_genai_image(input_image=base_img, save_to_disk=False)
+        if isinstance(img, Image.Image):
+            if img.size != size:
+                img = img.resize(size, Image.LANCZOS)
+            return img
     except Exception as e:
         print(f"genai.py not usable yet: {e}")
 
